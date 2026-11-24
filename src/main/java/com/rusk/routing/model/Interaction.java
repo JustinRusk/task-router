@@ -12,6 +12,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.Objects;
 
 /**
  * A single inbound contact (for example, a phone call) that the routing engine handles.
@@ -32,6 +33,10 @@ public class Interaction {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
+	/** The telephony platform's unique ID for the call. Unique, so a retried request cannot create a duplicate. */
+	@Column(nullable = false, unique = true, updatable = false, length = 64)
+	private String callId;
+
 	/** Caller's number (ANI). */
 	@Column(nullable = false, length = 32)
 	private String callerNumber;
@@ -39,6 +44,10 @@ public class Interaction {
 	/** Number the caller dialed (DNIS). */
 	@Column(nullable = false, length = 32)
 	private String dialedNumber;
+
+	/** DTMF digits the caller pressed in the IVR menu, such as "2" or "1*3"; null if the caller made no selection. */
+	@Column(length = 32, updatable = false)
+	private String dtmfInput;
 
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 16)
@@ -63,15 +72,36 @@ public class Interaction {
 	protected Interaction() {
 	}
 
-	public Interaction(String callerNumber, String dialedNumber) {
+	public Interaction(String callId, String callerNumber, String dialedNumber) {
+		this(callId, callerNumber, dialedNumber, null);
+	}
+
+	public Interaction(String callId, String callerNumber, String dialedNumber, String dtmfInput) {
+		this.callId = callId;
 		this.callerNumber = callerNumber;
 		this.dialedNumber = dialedNumber;
+		this.dtmfInput = dtmfInput;
 		this.status = Status.RECEIVED;
 		this.createdAt = Instant.now(); // set here, not on persist, so it is always earlier than routedAt
 	}
 
 	public Long getId() {
 		return id;
+	}
+
+	public String getCallId() {
+		return callId;
+	}
+
+	/** True when this interaction was created from the same caller number, dialed number, and DTMF input. */
+	public boolean hasSameDetails(String callerNumber, String dialedNumber, String dtmfInput) {
+		return this.callerNumber.equals(callerNumber)
+				&& this.dialedNumber.equals(dialedNumber)
+				&& Objects.equals(this.dtmfInput, dtmfInput);
+	}
+
+	public String getDtmfInput() {
+		return dtmfInput;
 	}
 
 	public String getCallerNumber() {

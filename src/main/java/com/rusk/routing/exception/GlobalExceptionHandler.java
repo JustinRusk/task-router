@@ -36,7 +36,10 @@ public class GlobalExceptionHandler {
 				HttpStatus.BAD_REQUEST, "Request validation failed");
 		Map<String, String> errors = new LinkedHashMap<>();
 		ex.getBindingResult().getFieldErrors()
-				.forEach(error -> errors.putIfAbsent(error.getField(), error.getDefaultMessage()));
+				.forEach(error -> errors.putIfAbsent(error.getField(), error.isBindingFailure()
+						// a value that could not be converted, such as status=DONE or a malformed date
+						? "invalid value '" + error.getRejectedValue() + "'"
+						: error.getDefaultMessage()));
 		problem.setProperty("errors", errors);
 		return problem;
 	}

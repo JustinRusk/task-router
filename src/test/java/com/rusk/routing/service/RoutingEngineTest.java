@@ -32,7 +32,7 @@ class RoutingEngineTest {
 	private final List<RoutingRule> sampleRules = List.of(spanishRule, billingRule, techRule, catchAll);
 
 	private Optional<RoutingRule> route(String caller, String dialed, List<RoutingRule> rules) {
-		return engine.selectRule(new Interaction(caller, dialed), rules);
+		return engine.selectRule(new Interaction("call-1", caller, dialed), rules);
 	}
 
 	@Test
@@ -87,5 +87,55 @@ class RoutingEngineTest {
 	@Test
 	void noRulesMeansNoMatch() {
 		assertThat(route("+12145550000", BILLING_LINE, List.of())).isEmpty();
+	}
+
+	// DTMF menu selections
+
+	private final Queue payments = new Queue("payments");
+	private final RoutingRule billingPress1 =
+			new RoutingRule("Billing menu: 1 for payments", 15, BILLING_LINE, null, "1", payments);
+
+	private Optional<RoutingRule> routeWithDtmf(String caller, String dialed, String dtmf, List<RoutingRule> rules) {
+		return engine.selectRule(new Interaction("call-1", caller, dialed, dtmf), rules);
+	}
+
+	@Test
+	void dtmfRuleMatchesWhenCallerPressedThatKey() {
+		List<RoutingRule> rules = List.of(billingPress1, billingRule, catchAll);
+
+		assertThat(routeWithDtmf("+12145550000", BILLING_LINE, "1", rules)).contains(billingPress1);
+	}
+
+	@Test
+	void dtmfRuleSkippedWhenCallerPressedAnotherKey() {
+		List<RoutingRule> rules = List.of(billingPress1, billingRule, catchAll);
+
+		assertThat(routeWithDtmf("+12145550000", BILLING_LINE, "2", rules)).contains(billingRule);
+	}
+
+	@Test
+	void dtmfRuleSkippedWhenCallerPressedNothing() {
+		List<RoutingRule> rules = List.of(billingPress1, billingRule, catchAll);
+
+		assertThat(routeWithDtmf("+12145550000", BILLING_LINE, null, rules)).contains(billingRule);
+	}
+
+	@Test
+	void dtmfMustMatchExactlyNotAsPrefix() {
+		List<RoutingRule> rules = List.of(billingPress1, billingRule, catchAll);
+
+		assertThat(routeWithDtmf("+12145550000", BILLING_LINE, "12", rules)).contains(billingRule);
+	}
+
+	@Test
+	void dtmfRuleStillRequiresItsOtherConditions() {
+		List<RoutingRule> rules = List.of(billingPress1, catchAll);
+
+		assertThat(routeWithDtmf("+12145550000", SPANISH_LINE, "1", rules)).contains(catchAll);
+	}
+
+	@Test
+	void rulesWithoutDtmfConditionIgnoreTheInput() {
+		assertThat(routeWithDtmf("+12145550000", SPANISH_LINE, "9", sampleRules)).contains(spanishRule);
 	}
 }

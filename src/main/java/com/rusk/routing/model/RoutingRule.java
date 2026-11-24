@@ -38,6 +38,10 @@ public class RoutingRule {
 	@Column(length = 32)
 	private String callerPrefix;
 
+	/** DTMF digits the caller must have pressed, matched exactly. Null means "any input, or none". */
+	@Column(length = 32)
+	private String dtmfInput;
+
 	@ManyToOne(optional = false)
 	@JoinColumn(name = "target_queue_id", nullable = false)
 	private Queue targetQueue;
@@ -50,10 +54,16 @@ public class RoutingRule {
 	}
 
 	public RoutingRule(String name, int priority, String dialedNumber, String callerPrefix, Queue targetQueue) {
+		this(name, priority, dialedNumber, callerPrefix, null, targetQueue);
+	}
+
+	public RoutingRule(String name, int priority, String dialedNumber, String callerPrefix, String dtmfInput,
+					   Queue targetQueue) {
 		this.name = name;
 		this.priority = priority;
 		this.dialedNumber = dialedNumber;
 		this.callerPrefix = callerPrefix;
+		this.dtmfInput = dtmfInput;
 		this.targetQueue = targetQueue;
 	}
 
@@ -61,7 +71,8 @@ public class RoutingRule {
 	public boolean matches(Interaction interaction) {
 		return enabled
 				&& (dialedNumber == null || dialedNumber.equals(interaction.getDialedNumber()))
-				&& (callerPrefix == null || interaction.getCallerNumber().startsWith(callerPrefix));
+				&& (callerPrefix == null || interaction.getCallerNumber().startsWith(callerPrefix))
+				&& (dtmfInput == null || dtmfInput.equals(interaction.getDtmfInput()));
 	}
 
 	public Long getId() {
@@ -82,6 +93,10 @@ public class RoutingRule {
 
 	public String getCallerPrefix() {
 		return callerPrefix;
+	}
+
+	public String getDtmfInput() {
+		return dtmfInput;
 	}
 
 	public Queue getTargetQueue() {
