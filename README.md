@@ -23,9 +23,6 @@ Rule conditions:
 
 ## Running locally
 
-
-**1. Start PostgreSQL**
-
 **Requirements:** Java 21, Docker.
 
 ```bash
@@ -34,19 +31,7 @@ docker compose up -d                 # starts PostgreSQL and loads the schema an
 ```
 
 Defaults: `jdbc:postgresql://localhost:5432/postgres`, user `postgres`, password `dev`.
-To use another database, set `DB_URL` and `DB_PASSWORD`.
-To reset the data: `docker compose down -v`.
-
-```bash
-DB_PASSWORD=dev ./mvnw spring-boot:run
-```
-
-Windows PowerShell:
-
-```powershell
-$env:DB_PASSWORD = "dev"
-.\mvnw.cmd spring-boot:run
-```
+To use another database, set `DB_URL` and `DB_PASSWORD`. To reset the data: `docker compose down -v`.
 
 Health check: `GET http://localhost:8080/actuator/health`
 
@@ -95,6 +80,7 @@ A Postman collection is in [`postman/`](postman/).
 - **Rules cached in memory.** Routing a call never queries the database for rules. The cache reloads on a schedule (`routing.rules.refresh-interval`, default 30s) and swaps in the complete new list in one atomic step, so a request never sees a half-updated rule set. If a reload fails, the previous rules stay in use.
 - **Calls keep routing during a database outage.** A caller in the IVR should never wait on the database. If it is unreachable, create-and-route still answers from the cached rules, returns the decision with `persisted: false`, and logs it so the call can be traced. A circuit breaker skips the database for `routing.db.retry-after` (default 5s) before trying again. Short connection and socket timeouts make it fail fast.
 - **Routing logic is pure.** `RoutingEngine` has no database access, so every rule combination is unit tested directly.
+- **Response DTOs, not entities.** The controller maps entities to `InteractionResponse` records, so the API contract does not change when the tables do, and internal fields never leak into responses.
 - **No N+1 queries.** The search loads each interaction's queue and matched rule in the same query (`@EntityGraph`), and rules are loaded with their queues (`join fetch`). Open-session-in-view is turned off.
 
 ## Tests
@@ -110,22 +96,11 @@ A Postman collection is in [`postman/`](postman/).
 | `DatabaseCircuitBreakerTest` | Opening, retry window, closing, telling outages from other errors |
 | `InteractionServiceOutageTest` | Routing without saving during an outage, recovery, errors that are not outages |
 | `TaskRouterApplicationTests` | Application context starts (needs a running database) |
-
-## Performance
-
-Tested with Postman against a local PostgreSQL instance.
-
-| Scenario | Virtual users | Duration | Requests/sec | p95 latency | p99 latency | Error rate |
-| --- | --- | --- | --- | --- | --- | --- |
-| Create and route | _fill in_ | _fill in_ | _fill in_ | _fill in_ | _fill in_ | _fill in_ |
-| Search | _fill in_ | _fill in_ | _fill in_ | _fill in_ | _fill in_ | _fill in_ |
-
-_Fill in: hardware, and what the bottleneck was._
+| `InteractionResponseTest` | Mapping entities to API responses, including unrouted and unsaved interactions |
 
 ## Next steps
 
 - **Agent selection:** agents with skills and proficiency; pick the best available agent and reserve it atomically (`FOR UPDATE SKIP LOCKED` or a conditional update) so no agent is assigned twice.
-- **Response DTOs:** return an `InteractionResponse` record instead of the entity, so the API contract is independent of the schema.
 - **Flyway migrations** with `ddl-auto=validate`, instead of `schema.sql` plus `ddl-auto=update`.
 - **Testcontainers** for integration tests against a real PostgreSQL.
 - **Events:** publish routing decisions through an outbox table for reporting and workforce management.
