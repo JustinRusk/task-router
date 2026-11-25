@@ -23,35 +23,19 @@ Rule conditions:
 
 ## Running locally
 
-**Requirements:** Java 21, Docker.
 
 **1. Start PostgreSQL**
 
-```bash
-docker run -d --name pg -e POSTGRES_PASSWORD=dev -p 5432:5432 postgres:16
-```
-
-**2. Create the schema and load sample rules**
-
-macOS / Linux:
+**Requirements:** Java 21, Docker.
 
 ```bash
-docker exec -i pg psql -U postgres < src/main/resources/db/schema.sql
-docker exec -i pg psql -U postgres < src/main/resources/db/seed.sql
+docker compose up -d                 # starts PostgreSQL and loads the schema and sample rules
+./mvnw spring-boot:run               # Windows: .\mvnw.cmd spring-boot:run
 ```
 
-Windows PowerShell:
-
-```powershell
-Get-Content src/main/resources/db/schema.sql | docker exec -i pg psql -U postgres
-Get-Content src/main/resources/db/seed.sql   | docker exec -i pg psql -U postgres
-```
-
-**3. Run the app**
-
-The database connection is set with environment variables. `DB_URL` defaults to `jdbc:postgresql://localhost:5432/postgres`.
-
-macOS / Linux:
+Defaults: `jdbc:postgresql://localhost:5432/postgres`, user `postgres`, password `dev`.
+To use another database, set `DB_URL` and `DB_PASSWORD`.
+To reset the data: `docker compose down -v`.
 
 ```bash
 DB_PASSWORD=dev ./mvnw spring-boot:run
