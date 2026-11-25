@@ -1,0 +1,1337 @@
+{
+  "info": {
+    "_postman_id": "5ee465c4-253d-49dd-a442-13aa5dad8ecb",
+    "name": "task-router API",
+    "description": "Requests for the task-router IVR routing engine (Spring Boot, com.rusk.routing).\n\nSelect the **task-router local** environment, start the app, then run the folders in order with the Collection Runner. Requests save the IDs they create into collection variables, so later requests reuse them.\n\nThe routing scenarios assume the sample rules from src/main/resources/db/seed.sql:\n- Spanish line +18005550199 -> spanish\n- Billing line +18005550100 -> billing\n- Tech line +18005550111 from a +1512 caller -> tech-support\n- Anything else -> general (catch-all)\n\nThe DTMF folder also needs one menu rule: pressing 1 on the billing line goes to payments. Its description has the SQL to create it.\n\nEvery create request needs a callId, the telephony platform's call ID. It is the idempotency key: repeating a request with the same callId returns the original interaction with 200 instead of creating a new one. The optional dtmfInput field holds the digits the caller pressed in the IVR menu.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. IVR routing (create and route)",
+      "item": [
+        {
+          "name": "Create and route a call",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('callId', 'call-' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Routed to tech-support', () => {",
+                  "    pm.expect(body.status).to.eql('ROUTED');",
+                  "    pm.expect(body.routedQueue.name).to.eql('tech-support');",
+                  "    pm.expect(body.matchedRule.name).to.eql('Tech line, Austin area');",
+                  "});",
+                  "pm.test('Location header points to the interaction', () => {",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('/api/interactions/' + body.id);",
+                  "});",
+                  "pm.collectionVariables.set('interactionId', body.id);"
+                ]
+              }
+            }
+          ],
+          "id": "5eeab2bb-d60c-429e-a8a3-2fc9ae5ec057",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{callId}}\",\n  \"callerNumber\": \"+15125550000\",\n  \"dialedNumber\": \"+18005550111\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Retry with the same call ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK, not a new interaction', () => pm.response.to.have.status(200));",
+                  "pm.test('Same interaction and decision as the first request', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(String(body.id)).to.eql(String(pm.collectionVariables.get('interactionId')));",
+                  "    pm.expect(body.routedQueue.name).to.eql('tech-support');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "id": "7dee8ed7-1bec-4a36-8bfe-b22b93567e2a",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{callId}}\",\n  \"callerNumber\": \"+15125550000\",\n  \"dialedNumber\": \"+18005550111\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reuse the call ID for a different call",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "id": "fdcb8565-2f1c-4f3c-a6b0-f0d640a2e820",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{callId}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550100\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "ca983269-c0e2-431b-bab8-26b35e6a0037",
+      "description": "The single call an IVR makes: create the interaction and get a routing decision back."
+    },
+    {
+      "name": "2. Routing scenarios",
+      "item": [
+        {
+          "name": "Billing line goes to billing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Routed to billing', () => pm.expect(pm.response.json().routedQueue.name).to.eql('billing'));"
+                ]
+              }
+            }
+          ],
+          "id": "74afc6e1-2816-4a66-a622-e26b81d45233",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{$guid}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550100\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Spanish line goes to spanish",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Routed to spanish', () => pm.expect(pm.response.json().routedQueue.name).to.eql('spanish'));"
+                ]
+              }
+            }
+          ],
+          "id": "1875af3f-64dd-4acd-874d-9d2b3cb55ce2",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{$guid}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550199\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Tech line from Austin goes to tech-support",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Routed to tech-support', () => pm.expect(pm.response.json().routedQueue.name).to.eql('tech-support'));"
+                ]
+              }
+            }
+          ],
+          "id": "4a8049d8-8879-4458-b62f-01265e76b2bc",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{$guid}}\",\n  \"callerNumber\": \"+15125550000\",\n  \"dialedNumber\": \"+18005550111\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Tech line from Dallas falls through to general",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Routed to general by the catch-all', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.routedQueue.name).to.eql('general');",
+                  "    pm.expect(body.matchedRule.name).to.eql('Catch-all');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "id": "1b0d3875-7968-4f46-89af-82f7ec1d135b",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{$guid}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550111\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "92ac4534-bfae-4092-afc1-a112937a472b",
+      "description": "One request per sample rule. Each uses a fresh random callId ({{$guid}}), so they can be sent any number of times."
+    },
+    {
+      "name": "3. Two-step create, then route",
+      "item": [
+        {
+          "name": "Create interaction (no routing)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('unroutedCallId', 'call-' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Received, not yet routed', () => {",
+                  "    pm.expect(body.status).to.eql('RECEIVED');",
+                  "    pm.expect(body.routedQueue).to.eql(null);",
+                  "});",
+                  "pm.collectionVariables.set('unroutedInteractionId', body.id);"
+                ]
+              }
+            }
+          ],
+          "id": "16611166-eccf-4fa5-bffb-49285b67ca4e",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{unroutedCallId}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550100\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Route interaction by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Routed to billing', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql('ROUTED');",
+                  "    pm.expect(body.routedQueue.name).to.eql('billing');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "id": "8901832d-a85c-45d6-ba48-6bb50adafbb3",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/{{unroutedInteractionId}}/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "{{unroutedInteractionId}}",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Route the same interaction again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK with the original decision', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().routedQueue.name).to.eql('billing');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "id": "cc91d60e-3041-460e-b41f-ca977adb9cc7",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/{{unroutedInteractionId}}/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "{{unroutedInteractionId}}",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "7cd1bb16-41e5-40a9-9b78-51e9fe86e9a0",
+      "description": "Create an interaction without routing it, then route it by ID."
+    },
+    {
+      "name": "4. Read",
+      "item": [
+        {
+          "name": "Get interaction by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Has the requested ID', () => pm.expect(String(pm.response.json().id)).to.eql(String(pm.collectionVariables.get('interactionId'))));"
+                ]
+              }
+            }
+          ],
+          "id": "edea1dbd-35d3-4dc2-a320-9c74b20ce3de",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/{{interactionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "{{interactionId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List interactions (newest 50)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns a page of interactions', () => {",
+                  "    pm.expect(body.items).to.be.an('array');",
+                  "    pm.expect(body.page).to.eql(0);",
+                  "    pm.expect(body.size).to.eql(50);",
+                  "    pm.expect(body.items.length).to.be.at.most(50);",
+                  "    pm.expect(body.totalItems).to.be.at.least(body.items.length);",
+                  "});",
+                  "pm.test('Newest first', () => {",
+                  "    const times = body.items.map(i => Date.parse(i.createdAt));",
+                  "    for (let n = 1; n < times.length; n++) {",
+                  "        pm.expect(times[n - 1]).to.be.at.least(times[n]);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "78d4237b-422a-405b-b666-bc6860b9ced6",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions"
+              ]
+            },
+            "description": "With no filters, returns the newest 50 interactions as one page. The response is a page object: items, page, size, totalItems, totalPages."
+          },
+          "response": []
+        },
+        {
+          "name": "Health check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('App is UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ]
+              }
+            }
+          ],
+          "id": "a9d2ba44-c6ab-4800-b09d-fceed7e9491a",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter: routed to billing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Every item is routed to billing', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.size).to.eql(20);",
+                  "    body.items.forEach(i => {",
+                  "        pm.expect(i.status).to.eql('ROUTED');",
+                  "        pm.expect(i.routedQueue.name).to.eql('billing');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "048a4fbf-e51a-4c67-b0fc-9bc75c3c0a2f",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions?status=ROUTED&queue=billing&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "ROUTED"
+                },
+                {
+                  "key": "queue",
+                  "value": "billing"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Combines filters with AND. Other filters: callId, callerNumber, dialedNumber, from, to (ISO-8601 instants), page, size (1-200)."
+          },
+          "response": []
+        },
+        {
+          "name": "Filter: by call ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Exactly one match, the interaction from folder 1', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.totalItems).to.eql(1);",
+                  "    pm.expect(String(body.items[0].id)).to.eql(String(pm.collectionVariables.get('interactionId')));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "e8155d89-55fd-494d-a203-a8b8e0a42f71",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions?callId={{callId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions"
+              ],
+              "query": [
+                {
+                  "key": "callId",
+                  "value": "{{callId}}"
+                }
+              ]
+            },
+            "description": "Finds the interaction created in folder 1 by its call ID. Run folder 1 first."
+          },
+          "response": []
+        },
+        {
+          "name": "Filter: second page of 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Second page, at most 2 items', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.page).to.eql(1);",
+                  "    pm.expect(body.size).to.eql(2);",
+                  "    pm.expect(body.items.length).to.be.at.most(2);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "b25d91e0-1b7c-4646-bf1c-e715842b6be5",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions?page=1&size=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "2"
+                }
+              ]
+            },
+            "description": "Paging: page is zero-based, so page=1 is the second page."
+          },
+          "response": []
+        },
+        {
+          "name": "Filter: invalid status is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Names the invalid parameter', () => pm.expect(pm.response.json().errors).to.have.property('status'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "d0a74685-2d14-42e5-9400-0126c3d1989d",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions?status=DONE",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "DONE"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "e85f1ee4-2e85-49e9-9b16-c7b5aae48ad2"
+    },
+    {
+      "name": "5. Errors",
+      "item": [
+        {
+          "name": "Missing call ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Names the missing field', () => pm.expect(pm.response.json().errors).to.have.property('callId'));"
+                ]
+              }
+            }
+          ],
+          "id": "54a34f66-f171-401b-954f-361db140ca35",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550100\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unknown interaction ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "id": "6590d52d-9cc0-434d-b03f-28d82261a340",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/999999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "999999999"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Route an unknown interaction ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "id": "48cc531a-2e4a-4b9e-b161-9438d835646d",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/999999999/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "999999999",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "e54087cf-338a-4d65-9ccd-03f38ebb2fec"
+    },
+    {
+      "name": "6. DTMF menu",
+      "item": [
+        {
+          "name": "Billing line, pressed 1 goes to payments",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('dtmfCallId', 'call-dtmf-' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Records the digits the caller pressed', () => pm.expect(body.dtmfInput).to.eql('1'));",
+                  "pm.test('Routed to payments by the menu rule', () => {",
+                  "    pm.expect(body.routedQueue.name).to.eql('payments');",
+                  "    pm.expect(body.matchedRule.dtmfInput).to.eql('1');",
+                  "});",
+                  "pm.collectionVariables.set('dtmfInteractionId', body.id);"
+                ]
+              }
+            }
+          ],
+          "id": "c3e8d2f1-5a7b-4d9f-8b2e-4f6a8c0d1e32",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{dtmfCallId}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550100\",\n  \"dtmfInput\": \"1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Retry with the same DTMF input",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK, not a new interaction', () => pm.response.to.have.status(200));",
+                  "pm.test('Same interaction, still routed to payments', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(String(body.id)).to.eql(String(pm.collectionVariables.get('dtmfInteractionId')));",
+                  "    pm.expect(body.routedQueue.name).to.eql('payments');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "id": "d4f9e3a2-6b8c-4e0a-9c3f-5a7b9d1e2f43",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{dtmfCallId}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550100\",\n  \"dtmfInput\": \"1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reuse the call ID with different DTMF input",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "id": "e5a0f4b3-7c9d-4f1b-8d4a-6b8c0e2f3a54",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{dtmfCallId}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550100\",\n  \"dtmfInput\": \"2\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Billing line, pressed 2 goes to billing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Routed to billing', () => pm.expect(pm.response.json().routedQueue.name).to.eql('billing'));"
+                ]
+              }
+            }
+          ],
+          "id": "f6b1a5c4-8d0e-4a2c-9e5b-7c9d1f3a4b65",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{$guid}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550100\",\n  \"dtmfInput\": \"2\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Billing line, no input goes to billing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('No digits recorded', () => pm.expect(body.dtmfInput).to.eql(null));",
+                  "pm.test('Routed to billing', () => pm.expect(body.routedQueue.name).to.eql('billing'));"
+                ]
+              }
+            }
+          ],
+          "id": "a7c2b6d5-9e1f-4b3d-8f6c-8d0e2a4b5c76",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{$guid}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550100\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Billing line, pressed 12 goes to billing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Routed to billing, not payments', () => pm.expect(pm.response.json().routedQueue.name).to.eql('billing'));"
+                ]
+              }
+            }
+          ],
+          "id": "b8d3c7e6-0f2a-4c4e-9a7d-9e1f3b5c6d87",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{$guid}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550100\",\n  \"dtmfInput\": \"12\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Spanish line, pressed 1 stays on spanish",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Routed to spanish', () => pm.expect(pm.response.json().routedQueue.name).to.eql('spanish'));"
+                ]
+              }
+            }
+          ],
+          "id": "c9e4d8f7-1a3b-4d5f-8b8e-0f2a4c6d7e98",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{$guid}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550199\",\n  \"dtmfInput\": \"1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid DTMF input is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Names the invalid field', () => pm.expect(pm.response.json().errors).to.have.property('dtmfInput'));"
+                ]
+              }
+            }
+          ],
+          "id": "d0f5e9a8-2b4c-4e6a-9c9f-1a3b5d7e8fa9",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{$guid}}\",\n  \"callerNumber\": \"+12145550000\",\n  \"dialedNumber\": \"+18005550100\",\n  \"dtmfInput\": \"1a\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/interactions/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "interactions",
+                "route"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "b7d2c1e0-4f6a-4c8e-9a1d-3e5f7a9b0c21",
+      "description": "Routing on the digits the caller pressed in the IVR menu (the optional dtmfInput field).\n\nThese requests need one menu rule in the database: pressing 1 on the billing line goes to a payments queue. Create it once in an IntelliJ query console:\n\n```sql\nINSERT INTO queues (name) VALUES ('payments');\n\nINSERT INTO routing_rules (name, priority, dialed_number, dtmf_input, target_queue_id)\nVALUES ('Billing menu: 1 for payments', 15, '+18005550100', '1',\n        (SELECT id FROM queues WHERE name = 'payments'));\n```\n\nWait up to 30 seconds for the rule cache to reload before running the folder. Run the first three requests in order; the rest are independent."
+    }
+  ],
+  "variable": [
+    {
+      "key": "callId",
+      "value": ""
+    },
+    {
+      "key": "interactionId",
+      "value": ""
+    },
+    {
+      "key": "unroutedCallId",
+      "value": ""
+    },
+    {
+      "key": "unroutedInteractionId",
+      "value": ""
+    },
+    {
+      "key": "dtmfCallId",
+      "value": ""
+    },
+    {
+      "key": "dtmfInteractionId",
+      "value": ""
+    }
+  ]
+}
