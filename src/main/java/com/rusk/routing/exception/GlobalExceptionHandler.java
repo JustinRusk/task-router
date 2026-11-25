@@ -1,6 +1,9 @@
 package com.rusk.routing.exception;
 
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -28,6 +31,16 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(NoMatchingRuleException.class)
 	public ProblemDetail handleNoMatchingRule(NoMatchingRuleException ex) {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
+	}
+
+	/** The database could not be reached. Only create-and-route keeps working during an outage. */
+	@ExceptionHandler({CannotCreateTransactionException.class, DataAccessResourceFailureException.class,
+			TransientDataAccessException.class})
+	public ProblemDetail handleDatabaseUnavailable(Exception ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE,
+				"Database unavailable; try again shortly");
+		problem.setProperty("retryable", true);
+		return problem;
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)

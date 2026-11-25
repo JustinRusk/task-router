@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -68,6 +69,13 @@ public class Interaction {
 
 	private Instant routedAt;
 
+	/**
+	 * Whether this interaction is stored in the database. Not a column: it is false only for a routing decision
+	 * made while the database was unavailable, and is returned in the API response so the caller knows.
+	 */
+	@Transient
+	private boolean persisted = true;
+
 	/** Required by JPA. */
 	protected Interaction() {
 	}
@@ -102,6 +110,15 @@ public class Interaction {
 
 	public String getDtmfInput() {
 		return dtmfInput;
+	}
+
+	public boolean isPersisted() {
+		return persisted;
+	}
+
+	/** Marks a routing decision that was made while the database was unavailable and was not saved. */
+	public void markNotPersisted() {
+		this.persisted = false;
 	}
 
 	public String getCallerNumber() {

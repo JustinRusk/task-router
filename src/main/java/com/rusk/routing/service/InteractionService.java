@@ -10,6 +10,8 @@ import com.rusk.routing.model.Interaction;
 import com.rusk.routing.model.RoutingRule;
 import com.rusk.routing.repository.InteractionRepository;
 import jakarta.persistence.criteria.Predicate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -27,19 +29,24 @@ import java.util.function.Function;
 @Service
 public class InteractionService {
 
+	private static final Logger log = LoggerFactory.getLogger(InteractionService.class);
+
 	private final InteractionRepository repository;
 	private final RuleCache ruleCache;
 	private final RoutingEngine routingEngine;
 	private final TransactionTemplate transactionTemplate;
+	private final DatabaseCircuitBreaker databaseCircuit;
 
 	public InteractionService(InteractionRepository repository,
 							  RuleCache ruleCache,
 							  RoutingEngine routingEngine,
-							  PlatformTransactionManager transactionManager) {
+							  PlatformTransactionManager transactionManager,
+							  DatabaseCircuitBreaker databaseCircuit) {
 		this.repository = repository;
 		this.ruleCache = ruleCache;
 		this.routingEngine = routingEngine;
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
+		this.databaseCircuit = databaseCircuit;
 	}
 
 	/**
@@ -55,15 +62,50 @@ public class InteractionService {
 	 * Creates an interaction and routes it, the way an IVR would request a route. Idempotent on the call ID:
 	 * a retry returns the original interaction and routing decision without evaluating the rules again.
 	 * If no rule matches, nothing is saved, so a retry evaluates the rules again.
+	 * <p>
+	 * If the database is unreachable, the call is still routed from the in-memory rules and the decision is
+	 * returned unsaved (see {@link #routeWithoutSaving}), because a caller must never wait on the database.
 	 *
 	 * @throws ConflictException       if the call ID was already used with different numbers
 	 * @throws NoMatchingRuleException if no enabled rule matches
 	 */
 	public CreateResult createAndRoute(CreateInteractionRequest request) {
-		return createIdempotently(request, interaction -> {
-			applyRouting(interaction);
-			return repository.saveAndFlush(interaction);
-		});
+		if (databaseCircuit.isOpen()) {
+			return routeWithoutSaving(request);
+		}
+		try {
+			CreateResult result = createIdempotently(request, interaction -> {
+				applyRouting(interaction);
+				return repository.saveAndFlush(interaction);
+			});
+			databaseCircuit.recordSuccess();
+			return result;
+		} catch (RuntimeException e) {
+			if (!DatabaseCircuitBreaker.isDatabaseUnavailable(e)) {
+				throw e; // a real error in the request or the rules, such as a conflict or no matching rule
+			}
+			databaseCircuit.recordFailure(e);
+			return routeWithoutSaving(request);
+		}
+	}
+
+	/**
+	 * Degraded mode for a database outage: routes from the cached rules without saving anything.
+	 * <p>
+	 * The returned interaction has no ID and reports {@code persisted: false}. The full decision is logged,
+	 * so the call can be traced from the logs. Duplicate call IDs cannot be detected in this mode, but a retry
+	 * gets the same decision as long as the cached rules have not changed.
+	 */
+	private CreateResult routeWithoutSaving(CreateInteractionRequest request) {
+		Interaction interaction = newInteraction(request);
+		applyRouting(interaction);
+		interaction.markNotPersisted();
+		log.warn("UNSAVED routing decision (database unavailable): callId={} caller={} dialed={} dtmf={} "
+						+ "queue={} rule={} routedAt={}",
+				interaction.getCallId(), interaction.getCallerNumber(), interaction.getDialedNumber(),
+				interaction.getDtmfInput(), interaction.getRoutedQueue().getName(),
+				interaction.getMatchedRule().getName(), interaction.getRoutedAt());
+		return new CreateResult(interaction, false);
 	}
 
 	/**

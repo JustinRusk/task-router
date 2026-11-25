@@ -43,6 +43,7 @@ public class InteractionController {
 	 * Creates an interaction and routes it in one call. This is the endpoint an IVR would use.
 	 * Returns 201 with the routing decision, 200 with the original decision for a repeated call ID,
 	 * 409 if the call ID was reused with different numbers, or 422 if no rule matches (nothing is saved).
+	 * If the database is unavailable, still routes the call and returns 200 with "persisted": false.
 	 */
 	@PostMapping("/route")
 	public ResponseEntity<Interaction> createAndRoute(@Valid @RequestBody CreateInteractionRequest request) {
@@ -73,7 +74,10 @@ public class InteractionController {
 		return service.search(search);
 	}
 
-	/** 201 with a Location header for a new interaction; 200 for a retry that returned the original. */
+	/**
+	 * 201 with a Location header for a new interaction. 200 for a retry that returned the original, and for a
+	 * routing decision made while the database was unavailable (that body has no id and "persisted": false).
+	 */
 	private static ResponseEntity<Interaction> toResponse(CreateResult result) {
 		Interaction interaction = result.interaction();
 		if (!result.created()) {
