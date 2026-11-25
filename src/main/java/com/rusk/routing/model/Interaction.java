@@ -20,7 +20,7 @@ import java.util.Objects;
  */
 @Entity
 @Table(name = "interactions")
-@SuppressWarnings("unused") // accessors are used reflectively by Jackson (JSON responses) and JPA
+@SuppressWarnings("unused") // some accessors are used only by JPA
 public class Interaction {
 
 	public enum Status {

@@ -2,8 +2,8 @@ package com.rusk.routing.controller;
 
 import com.rusk.routing.dto.CreateInteractionRequest;
 import com.rusk.routing.dto.InteractionPage;
+import com.rusk.routing.dto.InteractionResponse;
 import com.rusk.routing.dto.InteractionSearch;
-import com.rusk.routing.model.Interaction;
 import com.rusk.routing.service.CreateResult;
 import com.rusk.routing.service.InteractionService;
 import jakarta.validation.Valid;
@@ -35,7 +35,7 @@ public class InteractionController {
 	 * with different numbers.
 	 */
 	@PostMapping
-	public ResponseEntity<Interaction> create(@Valid @RequestBody CreateInteractionRequest request) {
+	public ResponseEntity<InteractionResponse> create(@Valid @RequestBody CreateInteractionRequest request) {
 		return toResponse(service.create(request));
 	}
 
@@ -46,7 +46,7 @@ public class InteractionController {
 	 * If the database is unavailable, still routes the call and returns 200 with "persisted": false.
 	 */
 	@PostMapping("/route")
-	public ResponseEntity<Interaction> createAndRoute(@Valid @RequestBody CreateInteractionRequest request) {
+	public ResponseEntity<InteractionResponse> createAndRoute(@Valid @RequestBody CreateInteractionRequest request) {
 		return toResponse(service.createAndRoute(request));
 	}
 
@@ -55,13 +55,13 @@ public class InteractionController {
 	 * Safe to retry: an already routed interaction is returned unchanged.
 	 */
 	@PostMapping("/{id}/route")
-	public Interaction route(@PathVariable Long id) {
-		return service.route(id);
+	public InteractionResponse route(@PathVariable Long id) {
+		return InteractionResponse.from(service.route(id));
 	}
 
 	@GetMapping("/{id}")
-	public Interaction get(@PathVariable Long id) {
-		return service.get(id);
+	public InteractionResponse get(@PathVariable Long id) {
+		return InteractionResponse.from(service.get(id));
 	}
 
 	/**
@@ -78,15 +78,15 @@ public class InteractionController {
 	 * 201 with a Location header for a new interaction. 200 for a retry that returned the original, and for a
 	 * routing decision made while the database was unavailable (that body has no id and "persisted": false).
 	 */
-	private static ResponseEntity<Interaction> toResponse(CreateResult result) {
-		Interaction interaction = result.interaction();
+	private static ResponseEntity<InteractionResponse> toResponse(CreateResult result) {
+		InteractionResponse body = InteractionResponse.from(result.interaction());
 		if (!result.created()) {
-			return ResponseEntity.ok(interaction);
+			return ResponseEntity.ok(body);
 		}
 		URI location = ServletUriComponentsBuilder.fromCurrentContextPath()
 				.path("/api/interactions/{id}")
-				.buildAndExpand(interaction.getId())
+				.buildAndExpand(body.id())
 				.toUri();
-		return ResponseEntity.created(location).body(interaction);
+		return ResponseEntity.created(location).body(body);
 	}
 }

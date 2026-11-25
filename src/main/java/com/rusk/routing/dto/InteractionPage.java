@@ -14,10 +14,10 @@ import java.util.List;
  * @param totalItems number of interactions matching the filters, across all pages
  * @param totalPages number of pages at this size
  */
-public record InteractionPage(List<Interaction> items, int page, int size, long totalItems, int totalPages) {
+public record InteractionPage(List<InteractionResponse> items, int page, int size, long totalItems, int totalPages) {
 
 	public static InteractionPage from(Page<Interaction> page) {
-		return new InteractionPage(page.getContent(), page.getNumber(), page.getSize(),
-				page.getTotalElements(), page.getTotalPages());
+		return new InteractionPage(page.getContent().stream().map(InteractionResponse::from).toList(),
+				page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
 	}
 }

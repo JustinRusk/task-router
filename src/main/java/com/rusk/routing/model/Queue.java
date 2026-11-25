@@ -12,7 +12,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "queues")
-@SuppressWarnings("unused") // accessors are used reflectively by Jackson (JSON responses) and JPA
+@SuppressWarnings("unused") // some accessors are used only by JPA
 public class Queue {
 
 	@Id

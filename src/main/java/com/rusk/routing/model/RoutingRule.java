@@ -16,7 +16,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "routing_rules")
-@SuppressWarnings("unused") // accessors are used reflectively by Jackson (JSON responses) and JPA
+@SuppressWarnings("unused") // some accessors are used only by JPA
 public class RoutingRule {
 
 	@Id
